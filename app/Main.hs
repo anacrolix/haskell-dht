@@ -1,8 +1,8 @@
 
 module Main where
 
-import Options.Applicative
-import Control.Monad (join)
+import           Control.Monad       (join)
+import           Options.Applicative
 
 commands = hsubparser (command "ping" (info (pure ping) idm )
     <> command "listen" (info (pure listen) (progDesc "just listens for incoming messages"))
