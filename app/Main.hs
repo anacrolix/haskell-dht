@@ -1,5 +1,6 @@
-{-# LANGUAGE NumDecimals, OverloadedStrings, ScopedTypeVariables
-  #-}
+{-# LANGUAGE NumDecimals #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
@@ -20,10 +21,11 @@ import Text.Pretty.Simple
 
 commands =
   hsubparser
-    (command "ping" (info (pure ping) idm) <>
-     command
-       "listen"
-       (info (pure Main.listen) (progDesc "just listens for incoming messages")))
+    ( command "ping" (info (pure ping) idm)
+        <> command
+          "listen"
+          (info (pure Main.listen) (progDesc "just listens for incoming messages"))
+    )
 
 main :: IO ()
 main = join $ execParser (info (commands <**> helper) idm)
@@ -32,9 +34,12 @@ createSocket =
   withSocketsDo $ do
     addrs <-
       getAddrInfo
-        (Just $
-         defaultHints
-           {addrFlags = [AI_PASSIVE, AI_NUMERICHOST], addrSocketType = Datagram})
+        ( Just $
+            defaultHints
+              { addrFlags = [AI_PASSIVE, AI_NUMERICHOST],
+                addrSocketType = Datagram
+              }
+        )
         Nothing
         (Just "42069")
     pPrint addrs
@@ -56,12 +61,12 @@ listenDoThenWait job = do
   wait receiver
 
 globalAddrs =
-  [ ("router.utorrent.com", "6881")
-  , ("router.bittorrent.com", "6881")
-  , ("dht.transmissionbt.com", "6881")
-  , ("dht.aelitis.com", "6881") -- Vuze
-  , ("router.silotis.us", "6881") -- IPv6
-  , ("dht.libtorrent.org", "25401") -- @arvidn's
+  [ ("router.utorrent.com", "6881"),
+    ("router.bittorrent.com", "6881"),
+    ("dht.transmissionbt.com", "6881"),
+    ("dht.aelitis.com", "6881"), -- Vuze
+    ("router.silotis.us", "6881"), -- IPv6
+    ("dht.libtorrent.org", "25401") -- @arvidn's
   ]
 
 getAddrAddress (host, service) = do
@@ -76,8 +81,7 @@ getAddrAddress (host, service) = do
 globalAddrAddresses :: IO [SockAddr]
 globalAddrAddresses = mapM getAddrAddress globalAddrs
 
-ping :: IO ()
-ping = listenDoThenWait sendPing
+ping :: IO () = listenDoThenWait sendPing
   where
     sendPing :: Socket -> IO ()
     sendPing sock = do
@@ -87,13 +91,14 @@ ping = listenDoThenWait sendPing
           mkBuf g =
             let (t, g) = genByteString 4 g
              in ( toStrict . bPack . BDict $
-                  Map.fromList
-                    [ ("t", BString . fromStrict $ t)
-                    , ("y", BString "q")
-                    , ("q", BString "ping")
-                    , ("a", BDict . Map.fromList $ [("id", BString id)])
-                    ]
-                , g)
+                    Map.fromList
+                      [ ("t", BString . fromStrict $ t),
+                        ("y", BString "q"),
+                        ("q", BString "ping"),
+                        ("a", BDict . Map.fromList $ [("id", BString id)])
+                      ],
+                  g
+                )
       addrs <- globalAddrAddresses
       let theDo =
             forever $ do
