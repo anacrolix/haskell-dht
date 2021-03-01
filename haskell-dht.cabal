@@ -3,7 +3,6 @@ name:               haskell-dht
 version:            0.1.0.0
 author:             Matt Joiner
 maintainer:         anacrolix@gmail.com
-extra-source-files: CHANGELOG.md
 
 executable dht
   main-is:          Main.hs
