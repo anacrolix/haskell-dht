@@ -6,8 +6,9 @@ maintainer:    anacrolix@gmail.com
 
 library
   exposed-modules:  BitTorrent.DHT
+  other-modules: BitTorrent.DHT.Traversal
   hs-source-dirs:   src
-  build-depends:    base, bytestring, containers, network
+  build-depends:    base, bytestring, containers, network, stm
   default-language: Haskell2010
 
 executable dht
