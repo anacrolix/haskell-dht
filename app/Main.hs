@@ -24,6 +24,7 @@ import Network.Socket.ByteString
 import Options.Applicative
 import System.Random
 import Text.Pretty.Simple
+import BitTorrent.DHT
 
 pingParser :: Parser (IO ())
 pingParser = ping <$> optional (option auto (short 'c' <> long "count"))

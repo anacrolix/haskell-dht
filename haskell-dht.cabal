@@ -1,8 +1,14 @@
-cabal-version:      2.4
-name:               haskell-dht
-version:            0.1.0.0
-author:             Matt Joiner
-maintainer:         anacrolix@gmail.com
+cabal-version: 2.4
+name:          haskell-dht
+version:       0.1.0.0
+author:        Matt Joiner
+maintainer:    anacrolix@gmail.com
+
+library
+  exposed-modules:  BitTorrent.DHT
+  hs-source-dirs:   src
+  build-depends:    base, bytestring, containers, network
+  default-language: Haskell2010
 
 executable dht
   main-is:          Main.hs
@@ -12,6 +18,7 @@ executable dht
                   , bencoding
                   , bytestring
                   , containers
+                  , haskell-dht
                   , network
                   , optparse-applicative
                   , pretty-simple
@@ -21,7 +28,8 @@ executable dht
   default-language: Haskell2010
 
 test-suite test-dht
-  type:           exitcode-stdio-1.0
-  main-is:        Spec.hs
-  hs-source-dirs: tests
-  build-depends:  base, bencoding, hspec
+  type:             exitcode-stdio-1.0
+  main-is:          Spec.hs
+  hs-source-dirs:   tests
+  build-depends:    base, bencoding, hspec
+  default-language: Haskell2010
