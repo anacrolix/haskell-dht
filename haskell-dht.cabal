@@ -10,12 +10,19 @@ executable dht
   hs-source-dirs:   app
   build-depends:    base
                   , async
-                  , bencode
+                  , bencoding
                   , bytestring
                   , containers
                   , network
                   , optparse-applicative
                   , pretty-simple
                   , random
+                  , text
                   , transformers
   default-language: Haskell2010
+
+test-suite test-dht
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs: tests
+  build-depends:  base, bencoding, hspec

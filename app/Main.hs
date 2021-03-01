@@ -1,18 +1,24 @@
 {-# LANGUAGE NumDecimals #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
 import Control.Concurrent
 import Control.Concurrent.Async
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State
 import Data.BEncode
+import Data.BEncode.Types
 import qualified Data.ByteString as B
-import Data.ByteString.Lazy
+import qualified Data.ByteString.Lazy as LB
+import qualified Data.ByteString.Lazy.Char8 as C
 import qualified Data.Map.Strict as Map
+import Data.Maybe
+import qualified Data.Text.Encoding as E
 import Network.Socket
 import Network.Socket.ByteString
 import Options.Applicative
@@ -30,20 +36,15 @@ commands =
 main :: IO ()
 main = join $ execParser (info (commands <**> helper) idm)
 
-createSocket =
+createSocket hints =
   withSocketsDo $ do
     addrs <-
       getAddrInfo
-        ( Just $
-            defaultHints
-              { addrFlags = [AI_PASSIVE, AI_NUMERICHOST],
-                addrSocketType = Datagram
-              }
-        )
+        ((\h -> h {addrFlags = AI_PASSIVE : addrFlags h}) <$> hints)
         Nothing
         (Just "42069")
     pPrint addrs
-    let addr = addrs !! 1
+    let addr = head addrs
     sock <- openSocket addr
     bind sock (addrAddress addr)
     return sock
@@ -51,13 +52,19 @@ createSocket =
 recvAndPrint sock =
   forever $ do
     (bs, sa) <- recvFrom sock 1500
-    Prelude.putStrLn $ "read from " ++ show sa ++ ": " ++ show bs
+    print bs
+    pPrint
+      ("read from", show sa, C.unpack . LB.fromStrict $ bs, prettifyPacket bs)
+  where
+    prettifyPacket bs = decode bs :: Result BValue
 
-listenDoThenWait :: (Socket -> IO a) -> IO ()
-listenDoThenWait job = do
-  sock <- createSocket
+type Hints = Maybe AddrInfo
+
+listenDoThenWait :: (Socket -> Hints -> IO a) -> Hints -> IO ()
+listenDoThenWait job hints = do
+  sock <- createSocket hints
   receiver <- async $ recvAndPrint sock
-  job sock
+  job sock hints
   wait receiver
 
 globalAddrs =
@@ -69,47 +76,57 @@ globalAddrs =
     ("dht.libtorrent.org", "25401") -- @arvidn's
   ]
 
-getAddrAddress (host, service) = do
-  addrs <-
-    getAddrInfo
-      (Just $ defaultHints {addrFlags = [AI_V4MAPPED]})
-      (Just host)
-      (Just service)
-  pPrint addrs
-  return . addrAddress . Prelude.head $ addrs
+getAddrAddress :: (HostName, ServiceName) -> Hints -> IO (Maybe SockAddr)
+getAddrAddress (host, service) hints = do
+  addrs <- try $ getAddrInfo hints (Just host) (Just service)
+  case addrs of
+    Left (e :: IOException) -> do
+      print ["error resolving", show (host, service), show e]
+      pure Nothing
+    Right ok -> do
+      pPrint addrs
+      return . Just . addrAddress . Prelude.head $ ok
 
-globalAddrAddresses :: IO [SockAddr]
-globalAddrAddresses = mapM getAddrAddress globalAddrs
+mainHints =
+  Just $ defaultHints {addrSocketType = Datagram, addrFamily = AF_INET}
 
-ping :: IO () = listenDoThenWait sendPing
+globalAddrAddresses ::
+  Maybe AddrInfo -> IO [((HostName, ServiceName), SockAddr)]
+globalAddrAddresses hints = do
+  nameAddrsIO <- zip globalAddrs <$> mapM (`getAddrAddress` hints) globalAddrs
+  return
+    [ (name, fromJust maybeAddr)
+      | (name, maybeAddr) <- nameAddrsIO,
+        isJust maybeAddr
+    ]
+
+ping :: IO () = listenDoThenWait sendPing mainHints
   where
-    sendPing :: Socket -> IO ()
-    sendPing sock = do
+    sendPing :: Socket -> Hints -> IO ()
+    sendPing sock hints = do
       stdGen <- getStdGen
-      let id = fromStrict . fst $ genByteString 20 stdGen
+      let id = fst $ genByteString 20 stdGen
       let mkBuf :: (RandomGen g) => g -> (B.ByteString, g)
           mkBuf g =
-            let (t, g) = genByteString 4 g
-             in ( toStrict . bPack . BDict $
-                    Map.fromList
-                      [ ("t", BString . fromStrict $ t),
-                        ("y", BString "q"),
-                        ("q", BString "ping"),
-                        ("a", BDict . Map.fromList $ [("id", BString id)])
-                      ],
-                  g
+            let (t, g') = genByteString 4 g
+             in ( LB.toStrict . encode $
+                         "t" .=! t
+                      .: "y" .=! ("q" :: BString)
+                      .: "q" .=! ("ping" :: BString)
+                      .: "a" .=! ("id" .=! id .: endDict)
+                      .: endDict,
+                  g'
                 )
-      addrs <- globalAddrAddresses
+      addrs <- globalAddrAddresses hints
       let theDo =
             forever $ do
               forM_ addrs $ \addr -> do
                 g <- get
-                let (buf, g) = mkBuf g
-                put g
-                pPrint addr
+                let (buf, g') = mkBuf g
+                put g'
                 pPrint buf
-                liftIO $ sendTo sock buf addr
+                liftIO $ sendTo sock buf $ snd addr
               liftIO $ threadDelay 5e6
-      void . forkIO . void $ evalStateT theDo stdGen
+      void $ forkIO $ void $ runStateT theDo stdGen
 
-listen = listenDoThenWait $ void . pure
+listen = listenDoThenWait (\sock hints -> pure ()) mainHints
