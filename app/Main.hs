@@ -25,9 +25,12 @@ import Options.Applicative
 import System.Random
 import Text.Pretty.Simple
 
+pingParser :: Parser (IO ())
+pingParser = ping <$> optional (option auto (short 'c' <> long "count"))
+
 commands =
   hsubparser
-    ( command "ping" (info (pure ping) idm)
+    ( command "ping" (info pingParser idm)
         <> command
           "listen"
           (info (pure Main.listen) (progDesc "just listens for incoming messages"))
@@ -100,17 +103,20 @@ globalAddrAddresses hints = do
         isJust maybeAddr
     ]
 
-ping :: IO () = listenDoThenWait sendPing mainHints
+type Repeats = Int
+
+ping :: Maybe Repeats -> IO ()
+ping repeats = listenDoThenWait sendPing mainHints
   where
     sendPing :: Socket -> Hints -> IO ()
     sendPing sock hints = do
       stdGen <- getStdGen
-      let id = fst $ genByteString 20 stdGen
+      (id, stdGen) <- pure $ genByteString 20 stdGen
       let mkBuf :: (RandomGen g) => g -> (B.ByteString, g)
           mkBuf g =
             let (t, g') = genByteString 4 g
              in ( LB.toStrict . encode $
-                         "t" .=! t
+                    "t" .=! t
                       .: "y" .=! ("q" :: BString)
                       .: "q" .=! ("ping" :: BString)
                       .: "a" .=! ("id" .=! id .: endDict)
@@ -119,7 +125,7 @@ ping :: IO () = listenDoThenWait sendPing mainHints
                 )
       addrs <- globalAddrAddresses hints
       let theDo =
-            forever $ do
+            loop $ do
               forM_ addrs $ \addr -> do
                 g <- get
                 let (buf, g') = mkBuf g
@@ -127,6 +133,7 @@ ping :: IO () = listenDoThenWait sendPing mainHints
                 pPrint buf
                 liftIO $ sendTo sock buf $ snd addr
               liftIO $ threadDelay 5e6
-      void $ forkIO $ void $ runStateT theDo stdGen
+      void . forkIO . void $ runStateT theDo stdGen
+    loop = maybe forever replicateM_ repeats
 
 listen = listenDoThenWait (\sock hints -> pure ()) mainHints
